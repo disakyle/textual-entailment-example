@@ -4,7 +4,7 @@
 Build a model image using docker and test locally
 
 ## Step 2
-Push the image to AWS ECR using /project/SageMaker/container/build_and_push.sh
+Push the image to AWS ECR using /project/Sagemaker/container/build_and_push.sh
 
 ## Step 3
 Put model file (checkpoints and vocabulary) to AWS S3 bucket
