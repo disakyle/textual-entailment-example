@@ -56,7 +56,7 @@
                     <md-card-header>
                         <md-card-header-text>
                             <div class="md-title">{{layoutItems[1].header}}</div>
-                            <div class="md-subhead" style="font-size:17px">{{layoutItems[1].subHeader}}</div>
+                            <div class="md-subhead">{{layoutItems[1].subHeader}}</div>
                         </md-card-header-text>
                     </md-card-header>
                     <md-card-content>
@@ -72,7 +72,7 @@
                     <md-card-header>
                         <md-card-header-text>
                             <div class="md-title">{{layoutItems[0].header}}</div>
-                            <div class="md-subhead" style="font-size:17px">{{layoutItems[0].subHeader}}</div>
+                            <div class="md-subhead">{{layoutItems[0].subHeader}}</div>
                         </md-card-header-text>
                             <md-card-media>
                                 <md-button class="md-raised md-primary" v-on:click="postContents">Submit</md-button>
@@ -91,9 +91,9 @@
                     <md-card-header>
                         <md-card-header-text>
                             <div class="md-title">{{layoutItems[2].header}}</div>
-                            <div v-if="prediction.successStatus === 'Success'" class="md-subhead" style="color:green;font-size:17px">Congradulation, you have cleared the path.</div>
-                            <div v-else-if="prediction.successStatus === 'Fail'"class="md-subhead" style="color:red;font-size:17px">Sorry, please try again!</div>
-                            <div v-else class="md-subhead" style="font-size:17px">{{layoutItems[2].subHeader}} {{taskCurrent}}.</div>
+                            <div v-if="prediction.successStatus === 'Success'" class="md-subhead" style="color:green">Congradulation, you have cleared the path.</div>
+                            <div v-else-if="prediction.successStatus === 'Fail'"class="md-subhead" style="color:red">Sorry, please try again!</div>
+                            <div v-else class="md-subhead">{{layoutItems[2].subHeader}} {{taskCurrent}}.</div>
                         </md-card-header-text>
                     </md-card-header>
                     <md-card-content>
@@ -102,6 +102,11 @@
                         </md-field>
                     </md-card-content>
                 </md-card>
+                <md-field>
+                    <span class="indent"></span>
+                    <span class="loading__anim"></span>
+                    <span class="indicator">Real-time prediction hosted on AWS SageMaker.</span>
+                </md-field>
             </div>
         </div>
         `
@@ -129,7 +134,7 @@
                 ], status:" 🔴"},
                 {name:"Free Practice", layoutItems: [
                 {header:"Your Hypothesis", subHeader:'Enter your hypothesis below', vModel:"Type here."},
-                {header:"Your Premise", subHeader:'Enter your own premise below', vModel:"Type "},
+                {header:"Your Premise", subHeader:'Enter your own premise below', vModel:"Type here. "},
                 {header:"Output", subHeader:'Enjoy the ', vModel:""}
                 ], status:" 🔴"}
             ]
@@ -232,6 +237,33 @@
     }
     .md-card-header{
         padding:0 16px 16px 16px
+    }
+    .indent {
+        padding-left: 20px;
+    }
+    .indicator {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 3px;
+        font-size: 18px;
+        font-weight: bold;
+        display: inline-block;
+        vertical-align: middle;
+    }
+    .loading__anim {
+        width: 28px;
+        height: 28px;
+        border:  4px dotted rgba(189,189,189 ,0.25);
+        border-left-color: rgba(20,180,10 ,1);
+        border-top-color: rgba(20,180,10 ,1);
+        border-radius: 50%;
+        display: inline-block;
+        animation: rotate 1200ms infinite linear;
+    }
+    @keyframes rotate {
+        to {
+            transform: rotate(1turn)
+        }
     }
     </style>
     </html>

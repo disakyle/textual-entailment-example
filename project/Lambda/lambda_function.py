@@ -2,266 +2,168 @@
 import json
 import traceback
 import re
+import os
 import signal
 import time
 import boto3
+from datetime import datetime
 
-client = boto3.client('runtime.sagemaker')
+client = boto3.client('sagemaker')
+runtime_client = boto3.client('runtime.sagemaker')
+dynamodb = boto3.client('dynamodb')
+eventWatch = boto3.client('events')
 
 def lambda_handler(event, context):
-
+    
+    # Check the SageMaker Endpoint status
+    def get_endpoint_status():
+        status = None
+        try:
+            endpoint_status = client.describe_endpoint(
+                EndpointName='textual-entailment-endpoint'
+                )
+            status = endpoint_status['EndpointStatus']
+        except:
+            status = "notExist"
+        return status
+    
+    # Initiate the SageMaker Endpoint
+    def initiate_endpoint():
+        client.create_endpoint(
+            EndpointName='textual-entailment-endpoint',
+            EndpointConfigName='textual-entailment-endpoint-configuration'
+            )
+        return
+    
+    # Delete the SageMaker Endpoint
+    def terminate_endpoint():
+        client.delete_endpoint(
+            EndpointName='textual-entailment-endpoint'
+            )
+        return
+    
+    # Get the UTC time when the Endpoint is last invoked
+    def get_last_invocation():
+        item = dynamodb.get_item(
+            TableName='GlobalItems',
+            Key={'ProjectName':{'S':'textual-entailment'}}
+            )
+        last_invocation = item['Item']['lastInvocation']['S']
+        last_invocation = datetime.strptime(last_invocation, '%Y-%m-%d %H:%M:%S.%f')
+        return last_invocation
+    
+    # Update the UTC time of Endpoint last invocation 
+    def update_last_invocation(new_time):
+        dynamodb.update_item(
+            TableName='GlobalItems',
+            Key={'ProjectName':{'S':'textual-entailment'}},
+            AttributeUpdates={'lastInvocation':{'Action':'PUT','Value':{'S':new_time}}}
+            )
+        return
+    
+    # Create local log in /tmp directory
+    def create_log():
+        timestamp = str(datetime.utcnow())
+        update_last_invocation(timestamp)
+        log_text = {
+            'lastInvocation': timestamp,
+            'lastDynamoUpdate': timestamp
+        }
+        with open('/tmp/last_invocation.jsonl','w') as f:
+            json.dump(log_text, f)
+            f.write('\n')
+            f.close()
+        return
+            
+    # Update the last invocation in /tmp directory to reduce utilization of DynamoDB
+    def local_last_invocation(new_time, mode):
+        with open('/tmp/last_invocation.jsonl','r') as f:
+            invocation_text = json.load(f)
+            f.close()
+        if mode == 1:
+            invocation_text['lastDynamoUpdate'] = new_time
+            with open('/tmp/last_invocation.jsonl','w') as f:
+                json.dump(invocation_text, f)
+                f.write('\n')
+                f.close()
+            return
+        else:
+            invocation_text['lastInvocation'] = new_time
+            last_update = invocation_text['lastDynamoUpdate']
+            invocation_time = datetime.strptime(new_time, '%Y-%m-%d %H:%M:%S.%f')
+            update_time = datetime.strptime(last_update, '%Y-%m-%d %H:%M:%S.%f')
+            time_diff = (invocation_time-update_time).total_seconds
+            with open('/tmp/last_invocation.jsonl','w') as f:
+                json.dump(invocation_text, f)
+                f.write('\n')
+                f.close()
+            return time_diff/60
+    
+    # Check the time elapsed between current UTC time and Endpoint last invocation time
+    def check_time_interval():
+        current_time = datetime.utcnow()
+        last_invocation = get_last_invocation()
+        time_diff = (current_time - last_invocation).total_seconds()
+        return time_diff/60
+    
+    # Run the prediction and update Endpoint last invocation time
     def run_prediction(input_json):
-        response = client.invoke_endpoint(
+        response = runtime_client.invoke_endpoint(
             EndpointName='textual-entailment-endpoint',
             Body=input_json,
             ContentType='application/json',
             Accept='Accept'
             )
+        current_time = str(datetime.utcnow())
+        if os.path.isfile('/tmp/last_invocation.jsonl'):
+            try:
+                minutes_diff = local_last_invocation(current_time, 2)
+            except:
+                minutes_diff = 0
+            if minutes_diff > 5:
+                update_last_invocation(current_time)
+                local_last_invocation(current_time, 1)
+        else:
+            create_log()
         result = response['Body'].read()
         return result.decode('utf-8')
+    
+    status = get_endpoint_status()
+    
+    # If at the time of scheduled checking, time elapsed is more than 40 minutes, then delete the Endpoint.
+    if "CheckStatus" in event and event["CheckStatus"]:
+        time_interval = check_time_interval()
+        if time_interval > 40 and status == 'InService':
+            terminate_endpoint()
+            # Terminate the CloudWatch Event as well
+            eventWatch.disable_rule(
+                Name="CheckStatus"
+                )
+        return {
+        "statusCode": 200
+        }
+
+    indexPage=None
+    
+    # If no Endpoint instance is running, proceed to create the Endpoint
+    if status == "notExist":
+        initiate_endpoint()
+        create_log()
+        # Enable the CloudWatch Event for automatic Endpoint shutdown
+        eventWatch.enable_rule(
+            Name="CheckStatus"
+            )
+    
+    if status != "InService":
+        page_to_load = "loading.html"
+    else:
+        page_to_load = "index.html"
+        
+    with open(page_to_load, "r") as f:
+        indexPage = f.read()
+        f.close()
 
     method = event.get('httpMethod',{}) 
-
-    indexPage="""
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <meta content="width=device-width,initial-scale=1,minimal-ui" name="viewport">
-    <link rel="stylesheet" href="https://unpkg.com/vue-material@beta/dist/vue-material.min.css">
-    <link rel="stylesheet" href="https://unpkg.com/vue-material@beta/dist/theme/default.css">
-  </head>
-    <body>
-         <h1>Writing A Hypothesis</h1>
-        <div id="app">
-            <md-tabs>
-                <md-tab v-for="task in tasks" :key=task.name v-bind:md-label=task.name+task.status>
-                    <doctest-activity v-bind:layout-things=task.layoutItems v-bind:task-name=task.name  @taskhandler="toggleTaskStatus"/>
-                </md-tab>
-            </md-tabs>
-            </div>
-        </div>
-    </body> 
-    <script src="https://unpkg.com/vue"></script>
-    <script src="https://unpkg.com/vue-material@beta"></script>
-    <script>
-    Vue.use(VueMaterial.default)
-    
-    Vue.component('doctest-activity', {
-        props: ['layoutThings', 'taskName'],
-        data: function () {
-            return {
-            prediction:"",
-            layoutItems: this.layoutThings,
-            taskCurrent: this.taskName,
-        }
-        },
-        methods: {
-            postContents: function () {
-            // comment: leaving the gatewayUrl empty - API will post back to itself
-            const gatewayUrl = '';
-            fetch(gatewayUrl, {
-        method: "POST",
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({hypothesis:{0:this.layoutItems[0].vModel},premise:{0:this.layoutItems[1].vModel},task:{0:this.layoutItems[2].vModel}})
-        }).then(response => {
-            return response.json()
-        }).then(data => {
-            this.prediction = JSON.parse(JSON.stringify(data))
-            return this.$emit('taskhandler',{data, taskName:this.taskName})
-            })
-         }
-        },
-        template: 
-        `<div class="md-layout  md-gutter">
-            <div id="cardGroupCreator" class="md-layout-item md-size-50">
-              <md-card>
-                    <md-card-header>
-                        <md-card-header-text>
-                            <div class="md-title">{{layoutItems[1].header}}</div>
-                            <div class="md-subhead">{{layoutItems[1].subHeader}}</div>
-                        </md-card-header-text>
-                    </md-card-header>
-                    <md-card-content>
-                        <md-field v-if="taskCurrent !== 'Free Practice'">
-                            <md-textarea v-model="layoutItems[1].vModel" readonly></md-textarea>
-                        </md-field>
-                        <md-field v-else>
-                            <md-textarea v-model="layoutItems[1].vModel"></md-textarea>
-                        </md-field>
-                    </md-card-content>
-                </md-card>
-                <md-card>
-                    <md-card-header>
-                        <md-card-header-text>
-                            <div class="md-title">{{layoutItems[0].header}}</div>
-                            <div class="md-subhead">{{layoutItems[0].subHeader}}</div>
-                        </md-card-header-text>
-                            <md-card-media>
-                                <md-button class="md-raised md-primary" v-on:click="postContents">Submit</md-button>
-                            </md-card-media>
-                    </md-card-header>
-                    <md-card-content>
-                        <md-field>
-                            <!--<codemirror class="editableTextarea" v-model="layoutItems[0].vModel" :options="cmOptions"></codemirror>-->
-                            <md-textarea v-model="layoutItems[0].vModel"></md-textarea>
-                        </md-field>
-                    </md-card-content>
-                </md-card>
-            </div>
-            <div id="cardGroupPreview" class="md-layout-item md-size-50">
-                <md-card>
-                    <md-card-header>
-                        <md-card-header-text>
-                            <div class="md-title">{{layoutItems[2].header}}</div>
-                            <div v-if="prediction.successStatus === 'Success'" class="md-subhead" style="color:green">Congradulation, you have cleared the path.</div>
-                            <div v-else-if="prediction.successStatus === 'Fail'"class="md-subhead" style="color:red">Sorry, please try again!</div>
-                            <div v-else class="md-subhead">{{layoutItems[2].subHeader}} {{taskCurrent}}</div>
-                        </md-card-header-text>
-                    </md-card-header>
-                    <md-card-content>
-                        <md-field>
-                            <md-textarea v-model="prediction.jsonFeedback" readonly></md-textarea>
-                        </md-field>
-                    </md-card-content>
-                </md-card>
-            </div>
-        </div>
-        `
-    })
-    
-    new Vue({
-        el: '#app',
-        data: function () {
-            return {
-            tasks:[
-                {name:"Entailment", layoutItems: [
-                {header:"Your Hypothesis", subHeader:'Enter your hypothesis below', vModel:"Type here."},
-                {header:"The Premise", subHeader:'', vModel:"A soccer game with multiple males playing."},
-                {header:"Output", subHeader:'To clear this path, predicted label should be ', vModel:"Entailment"}
-                ], status:" 🔴"},
-                {name:"Contradiction", layoutItems: [
-                {header:"Your Hypothesis", subHeader:'Enter your hypothesis below', vModel:"Type here."},
-                {header:"The Premise", subHeader:'', vModel:"A man inspects the uniform of a figure in some East Asian country."},
-                {header:"Output", subHeader:'To clear this path, predicted label should be ', vModel:"Contradiction"}
-                ], status:" 🔴"},
-                {name:"Neutral", layoutItems: [
-                {header:"Your Hypothesis", subHeader:'Enter your hypothesis below', vModel:"Type here."},
-                {header:"The Premise", subHeader:'', vModel:"A few people in a restaurant setting, one of them is drinking orange juice."},
-                {header:"Output", subHeader:'To clear this path, predicted label should be ', vModel:"Neutral"}
-                ], status:" 🔴"},
-                {name:"Free Practice", layoutItems: [
-                {header:"Your Hypothesis", subHeader:'Enter your hypothesis below', vModel:"Type here."},
-                {header:"Your Premise", subHeader:'Enter your own premise below', vModel:"Type "},
-                {header:"Output", subHeader:'Enjoy the ', vModel:""}
-                ], status:" 🔴"}
-            ]
-        }
-        },
-         methods: {
-            toggleTaskStatus (response) {
-                const {data, taskName} = response
-                if (data.jsonFeedback) {
-                    const searchText = data.jsonFeedback
-                    searchText.search(taskName) !== -1 ?
-                        this.tasks.find(item => item.name === taskName).status = " ✅ "
-                        :
-                    this.tasks.find(item => item.name === taskName).status = " 🤨"
-                }
-                if (taskName === "Free Practice") {
-                    this.tasks.find(item => item.name === taskName).status = " ✅ "
-                }
-            }
-        }
-      })
-    </script>
-    <style lang="scss" scoped>
-    .md-card {
-        width: 90%;
-        margin: 20px;
-        display: inline-block;
-        vertical-align: top;
-        min-height:200px
-    }
-    .md-card-content {
-        padding-bottom: 16px !important;
-    }
-    button {
-        display:block;
-        margin: 20px 60px 20px 60px;
-        width:200px !important;
-    }
-    #cardGroupCreator {
-        display:flex;
-        flex-direction:column;
-        vertical-align: top;
-        padding-top: 0px
-    }
-    #cardGroupPreview .md-card {
-        width: 90%;
-    }
-    #cardGroupPreview{
-        padding-top: 0px;
-        position: static
-    }
-    #cardGroupPreview .md-tab{
-        height:100%;
-        vertical-align: top;
-    }
-    textarea {
-        font-size: 1rem !important;
-        min-height: 175px !important
-    }
-    .md-tabs{
-        width:100%;
-    }
-    .md-tab{
-        overflow-x: auto;
-    }
-    .md-tab::-webkit-scrollbar {
-    width: 0px;
-    }
-    html {
-        width:95%;
-        margin:auto;
-        mix-blend-mode: darken
-    }
-    h1{
-        padding:20px;
-        margin:auto;
-        text-align: center
-    }
-    .md-content{
-        min-height:300px
-    }
-    .md-tabs-container, .md-tabs-container .md-tab textarea, .md-tabs-content{
-        height:100% !important
-    }
-    .md-field{
-        margin:0px;
-        padding:0px
-    }
-    .md-tabs-navigation{
-        justify-content:center !important
-    }
-    .md-card-media{
-        width:400px !important
-    }
-    .md-button{
-        margin:10px !important
-    }
-    .cm-s-default{
-        height:100%
-    }
-    .md-card-header{
-        padding:0 16px 16px 16px
-    }
-    </style>
-    </html>
-    """
-
     if method == 'GET':
         return {
             "statusCode": 200,

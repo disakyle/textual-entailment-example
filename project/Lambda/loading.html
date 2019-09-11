@@ -1,0 +1,55 @@
+<html>
+    <head>
+        <meta http-equiv="refresh" content="30"/>
+    </head>
+    <body>
+        <section class="loading">
+            Initiating AWS Sagemaker Endpoint, please wait for a few minutes.
+            <spanc class="loading__author"> Thank you! </span>
+            <spanc class="loading__author"></span> 
+            <span class="loading__anim"></span>
+        </section>
+    </body> 
+</html>
+<style type="text/css">
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.loading {
+   max-width: 70%;
+   line-height: 1.4;
+   font-size: 30px;
+   font-weight: bold;
+   text-align: center;
+   vertical-align: middle;
+}
+
+.loading__author {
+  font-weight: normal;
+  font-size: 30px;
+  color: rgba(189,189,189 ,1);
+  margin: 0.6rem 0 2rem 0;
+  display: block;
+}
+
+.loading__anim {
+  width: 55px;
+  height: 55px;
+  border:  10px solid rgba(189,189,189 ,0.25);
+  border-left-color: rgba(3,155,229 ,1);
+  border-top-color: rgba(3,155,229 ,1);
+  border-radius: 50%;
+  display: inline-block;
+  animation: rotate 600ms infinite linear;
+}
+
+@keyframes rotate {
+  to {
+    transform: rotate(1turn)
+  }
+}
+</style>

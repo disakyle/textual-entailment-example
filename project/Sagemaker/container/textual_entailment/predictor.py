@@ -44,17 +44,25 @@ def ping():
 def transformation():
     # Get input JSON data and convert it to a DF
     input_json = flask.request.get_json()
-    with open('/tmp/pred.jsonl', 'w') as f:
-        json.dump(input_json, f)
-        f.write('\n')
+    json_input = json.dumps(input_json)
+    example = data.example.Example.fromJSON(json_input, text_fields)
+    example_list = [example]
     # Tokenize data and predict
-    train, dev, predict = data.TabularDataset.splits(path='/tmp', format='json', fields=text_fields,
-                                        train='pred.jsonl', validation='pred.jsonl', test='pred.jsonl')
-    predict_iter = data.BucketIterator(predict, batch_size = 1, sort_key=lambda x: len(x.premise), device=device)
-    predict_item=next(iter(predict_iter))
+    if isinstance(text_fields, dict):
+        fields, field_dict=[],text_fields
+        for field in field_dict.values():
+            if isinstance(field, list):
+                fields.extend(field)
+            else:
+                fields.append(field)
+
+    predict = data.dataset.Dataset(examples = example_list, fields = fields)
+    predict_iter = data.iterator.Iterator(dataset = predict, batch_size = 1, device=device)
+    predict_item = next(iter(predict_iter))
     model.eval()
     answer = model(predict_item)
     xmax = int(torch.max(answer, 1)[1])
+    
     # Transform predicted labels (0, 1, and 2) to easier to understand as (Entailment, Contradiction, and Neutral)
     prediction = lambda x: 'Entailment' if x == 1 else ('Contradiction' if
                        x == 2 else 'Neutral')
