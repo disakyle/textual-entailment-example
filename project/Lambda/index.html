@@ -4,13 +4,13 @@
     <meta content="width=device-width,initial-scale=1,minimal-ui" name="viewport">
     <link rel="stylesheet" href="https://unpkg.com/vue-material@beta/dist/vue-material.min.css">
     <link rel="stylesheet" href="https://unpkg.com/vue-material@beta/dist/theme/default.css">
-  </head>
+    </head>
     <body>
          <h1>Writing A Hypothesis</h1>
         <div id="app">
             <md-tabs>
                 <md-tab v-for="task in tasks" :key=task.name v-bind:md-label=task.name+task.status>
-                    <doctest-activity v-bind:layout-things=task.layoutItems v-bind:task-name=task.name  @taskhandler="toggleTaskStatus"/>
+                    <tab-activity v-bind:layout-things=task.layoutItems v-bind:task-name=task.name  @taskhandler="toggleTaskStatus"/>
                 </md-tab>
             </md-tabs>
             </div>
@@ -21,7 +21,7 @@
     <script>
     Vue.use(VueMaterial.default)
     
-    Vue.component('doctest-activity', {
+    Vue.component('tab-activity', {
         props: ['layoutThings', 'taskName'],
         data: function () {
             return {
@@ -266,4 +266,4 @@
         }
     }
     </style>
-    </html>
+</html>
