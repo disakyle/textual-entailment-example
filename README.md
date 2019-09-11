@@ -1,6 +1,6 @@
 # textual-entailment-example
 
-# Step 1
+## Step 1
 Build a model image using docker and test locally
 
 # Step 2
