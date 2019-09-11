@@ -63,7 +63,7 @@ def transformation():
     answer = model(predict_item)
     xmax = int(torch.max(answer, 1)[1])
     
-    # Transform predicted labels (0, 1, and 2) to easier to understand as (Entailment, Contradiction, and Neutral)
+    # Transform predicted labels (1, 2, and 3) to easier to understand as (Entailment, Contradiction, and Neutral)
     prediction = lambda x: 'Entailment' if x == 1 else ('Contradiction' if
                        x == 2 else 'Neutral')
     label = prediction(xmax)
