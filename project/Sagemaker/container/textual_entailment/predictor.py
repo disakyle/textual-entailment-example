@@ -5,7 +5,6 @@ import os
 import json
 import torch
 import flask
-from flask import jsonify
 from torchtext import data
 from torchtext import datasets
 
