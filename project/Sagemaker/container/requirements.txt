@@ -5,7 +5,7 @@ chardet==3.0.4
 cymem==2.0.2
 idna==2.8
 murmurhash==1.0.2
-numpy==1.17.1
+numpy==1.22.0
 plac==0.9.6
 preshed==2.0.1
 requests==2.22.0
